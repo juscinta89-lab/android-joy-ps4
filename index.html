@@ -1,106 +1,107 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ms">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>MicroJoy URC10</title>
-
-<style>
-body {
-  font-family: Arial;
-  text-align: center;
-  background: #0f172a;
-  color: white;
-}
-
-h1 {
-  margin-top: 20px;
-}
-
-button {
-  padding: 18px;
-  margin: 8px;
-  font-size: 20px;
-  border-radius: 12px;
-  border: none;
-  width: 80px;
-}
-
-#connect {
-  background: #22c55e;
-  width: 200px;
-}
-
-.control {
-  margin-top: 30px;
-}
-
-.stop {
-  background: red;
-  width: 100px;
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Analog Bot Controller</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #121212; color: white; margin: 0; overflow: hidden; }
+        #status { margin: 10px; color: #00ff00; }
+        #joystick-container { position: relative; width: 300px; height: 300px; background: #222; border-radius: 50%; margin: 50px auto; border: 2px solid #444; touch-action: none; }
+        #joystick { position: absolute; width: 80px; height: 80px; background: #ff4757; border-radius: 50%; top: 110px; left: 110px; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        .btn { padding: 15px 30px; font-size: 18px; cursor: pointer; background: #2f3542; color: white; border: none; border-radius: 8px; margin-top: 20px; }
+        .connected { background: #2ecc71; }
+    </style>
 </head>
-
 <body>
 
-<h1>🤖 MicroJoy URC10</h1>
+    <h1>Joystick Progresif</h1>
+    <p id="status">Status: Disconnected</p>
+    <button id="connectBtn" class="btn">Connect Bluetooth</button>
 
-<button id="connect">🔗 Connect</button>
+    <div id="joystick-container">
+        <div id="joystick"></div>
+    </div>
 
-<div class="control">
-  <div>
-    <button onclick="send('F')">⬆️</button>
-  </div>
+    <script>
+        let bluetoothDevice;
+        let characteristic;
+        const joystick = document.getElementById('joystick');
+        const container = document.getElementById('joystick-container');
+        const statusText = document.getElementById('status');
+        
+        let centerX = 150, centerY = 150;
+        let lastSentTime = 0;
 
-  <div>
-    <button onclick="send('L')">⬅️</button>
-    <button class="stop" onclick="send('S')">STOP</button>
-    <button onclick="send('R')">➡️</button>
-  </div>
+        // --- Logik Bluetooth ---
+        document.getElementById('connectBtn').onclick = async () => {
+            try {
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ namePrefix: 'HC' }], // Tukar jika nama modul anda lain
+                    optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'] // Serial Port Service ID
+                });
+                const server = await bluetoothDevice.gatt.connect();
+                // Nota: Kebanyakan modul HC-05 guna UUID standard ini untuk komunikasi serial
+                statusText.innerText = "Status: Connected!";
+                document.getElementById('connectBtn').classList.add('connected');
+            } catch (error) {
+                console.log(error);
+                statusText.innerText = "Error: " + error;
+            }
+        };
 
-  <div>
-    <button onclick="send('B')">⬇️</button>
-  </div>
-</div>
+        async function sendData(v, h) {
+            if (characteristic) {
+                const data = `${v},${h}\n`;
+                const encoder = new TextEncoder();
+                await characteristic.writeValue(encoder.encode(data));
+            }
+            // Debugging ke console
+            console.log(`Sent: ${v},${h}`);
+        }
 
-<script>
-let device;
-let characteristic;
+        // --- Logik Joystick ---
+        container.ontouchmove = (e) => {
+            e.preventDefault();
+            let touch = e.touches[0];
+            let rect = container.getBoundingClientRect();
+            let x = touch.clientX - rect.left;
+            let y = touch.clientY - rect.top;
 
-// 🔥 CONNECT BLUETOOTH
-async function connectBluetooth() {
-  try {
-    device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: ['00001101-0000-1000-8000-00805f9b34fb']
-    });
+            // Hadkan gerakan dalam bulatan
+            let dx = x - centerX;
+            let dy = y - centerY;
+            let distance = Math.sqrt(dx*dx + dy*dy);
+            if (distance > 110) {
+                x = centerX + (dx / distance) * 110;
+                y = centerY + (dy / distance) * 110;
+            }
 
-    const server = await device.gatt.connect();
-    const service = await server.getPrimaryService('00001101-0000-1000-8000-00805f9b34fb');
-    characteristic = await service.getCharacteristic('00001101-0000-1000-8000-00805f9b34fb');
+            joystick.style.left = (x - 40) + 'px';
+            joystick.style.top = (y - 40) + 'px';
 
-    alert("✅ Connected to HC-05!");
-  } catch (error) {
-    alert("❌ Connection failed");
-    console.error(error);
-  }
-}
+            // Convert ke nilai 0-255 (seperti yang diminta kod Arduino)
+            let vValue = Math.round(mapRange(y, 40, 260, 255, 0));
+            let hValue = Math.round(mapRange(x, 40, 260, 0, 255));
 
-document.getElementById("connect").addEventListener("click", connectBluetooth);
+            // Hantar data setiap 100ms (elak buffer penuh)
+            let now = Date.now();
+            if (now - lastSentTime > 100) {
+                sendData(vValue, hValue);
+                lastSentTime = now;
+            }
+        };
 
-// 🔥 SEND DATA
-async function send(cmd) {
-  if (!characteristic) {
-    alert("⚠️ Not connected!");
-    return;
-  }
+        container.ontouchend = () => {
+            // Reset ke tengah
+            joystick.style.left = '110px';
+            joystick.style.top = '110px';
+            sendData(128, 128); // Berhenti
+        };
 
-  const encoder = new TextEncoder();
-  await characteristic.writeValue(encoder.encode(cmd));
-}
-</script>
-
+        function mapRange(value, inMin, inMax, outMin, outMax) {
+            return (value - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+        }
+    </script>
 </body>
 </html>
