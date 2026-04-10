@@ -3,128 +3,166 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Robot Controller PWA</title>
+    <title>PS4 Robot Controller</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #121212; color: white; padding: 20px; }
-        .status { margin: 20px; padding: 10px; border-radius: 8px; background: #222; }
-        button { padding: 15px 30px; font-size: 18px; cursor: pointer; border-radius: 8px; border: none; background: #007bff; color: white; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
-        .val { font-size: 24px; font-weight: bold; color: #00ff00; }
-        input[type=range] { width: 80%; margin: 20px; }
-        .connected { color: #00ff00; }
-        .disconnected { color: #ff4444; }
+        :root { --primary: #00d4ff; --bg: #0f0f0f; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: white; text-align: center; padding: 20px; margin: 0; }
+        .container { max-width: 500px; margin: auto; background: #1a1a1a; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        
+        .status-box { display: flex; justify-content: space-around; margin: 20px 0; font-size: 14px; }
+        .status { padding: 8px 15px; border-radius: 20px; background: #333; transition: 0.3s; }
+        .connected { color: #00ff88; border: 1px solid #00ff88; }
+        .disconnected { color: #ff4444; border: 1px solid #ff4444; }
+
+        button { 
+            background: linear-gradient(45deg, #007bff, #00d4ff);
+            color: white; border: none; padding: 15px 30px; 
+            font-size: 18px; font-weight: bold; border-radius: 50px; 
+            cursor: pointer; width: 100%; transition: 0.3s;
+        }
+        button:active { transform: scale(0.95); }
+
+        .display-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
+        .card { background: #252525; padding: 15px; border-radius: 15px; }
+        .val { font-size: 28px; font-weight: bold; color: var(--primary); margin-top: 5px; }
+
+        .slider-section { margin-top: 20px; padding: 20px; background: #252525; border-radius: 15px; }
+        input[type=range] { width: 100%; height: 10px; border-radius: 5px; background: #444; outline: none; margin: 15px 0; }
     </style>
 </head>
 <body>
 
-    <h1>Robot Control</h1>
+<div class="container">
+    <h2>🤖 Robot Controller</h2>
 
-    <div class="status">
-        Bluetooth: <span id="btStatus" class="disconnected">Terputus</span><br>
-        Gamepad: <span id="gpStatus" class="disconnected">Tiada PS4 Controller</span>
+    <div class="status-box">
+        <div id="btStatus" class="status disconnected">Bluetooth: OFF</div>
+        <div id="gpStatus" class="status disconnected">PS4: OFF</div>
     </div>
 
-    <button id="connectBtn">Sambung Bluetooth</button>
+    <button id="connectBtn">SAMBUNG BLUETOOTH</button>
 
-    <div class="grid">
-        <div>
-            <p>Joystick Kiri (LY)</p>
+    <div class="display-grid">
+        <div class="card">
+            <div>J-Kiri (LY)</div>
             <div id="lyVal" class="val">0</div>
         </div>
-        <div>
-            <p>Joystick Kanan (RX)</p>
+        <div class="card">
+            <div>J-Kanan (RX)</div>
             <div id="rxVal" class="val">0</div>
         </div>
     </div>
 
-    <p>Max Speed (Slider)</p>
-    <input type="range" id="speedSlider" min="0" max="255" value="200">
-    <div id="speedVal" class="val">200</div>
+    <div class="slider-section">
+        <div>Max Speed: <span id="speedVal" style="color:var(--primary); font-weight:bold;">200</span></div>
+        <input type="range" id="speedSlider" min="0" max="255" value="200">
+    </div>
 
-    <script>
-        let device, characteristic;
-        let lastLY = 0, lastRX = 0, lastV = 200;
+    <p style="font-size: 12px; color: #666; margin-top: 20px;">Guna Chrome (Android/PC) & HTTPS</p>
+</div>
 
-        // --- KONFIGURASI BLUETOOTH ---
-        const SERVICE_UUID = 0xFFE0; // Standard untuk HM-10/JDY-31
-        const CHAR_UUID = 0xFFE1;
+<script>
+    let device, characteristic;
+    let lastLY = 0, lastRX = 0, lastV = 200;
 
-        document.getElementById('connectBtn').addEventListener('click', async () => {
+    // UUID Universal untuk Bluetooth Classic (SPP) dan BLE
+    const UUID_SPP = "00001101-0000-1000-8000-00805f9b34fb"; 
+    const UUID_BLE = 0xFFE0; 
+
+    document.getElementById('connectBtn').addEventListener('click', async () => {
+        try {
+            // Kita cuba cari semua peranti
+            device = await navigator.bluetooth.requestDevice({
+                acceptAllDevices: true,
+                optionalServices: [UUID_BLE, UUID_SPP]
+            });
+
+            const server = await device.gatt.connect();
+            
+            // Cuba dapatkan service (mencuba BLE dahulu kemudian SPP)
+            let service;
             try {
-                device = await navigator.bluetooth.requestDevice({
-                    filters: [{ services: [SERVICE_UUID] }]
-                });
-                const server = await device.gatt.connect();
-                const service = await server.getPrimaryService(SERVICE_UUID);
-                characteristic = await service.getCharacteristic(CHAR_UUID);
-                
-                document.getElementById('btStatus').innerText = "Bersambung!";
-                document.getElementById('btStatus').className = "connected";
-                sendData("V:200\n"); // Hantar speed awal
-            } catch (error) {
-                console.log("Ralat Bluetooth: " + error);
+                service = await server.getPrimaryService(UUID_BLE);
+            } catch (e) {
+                service = await server.getPrimaryService(UUID_SPP);
             }
-        });
 
-        async function sendData(data) {
-            if (characteristic) {
+            const characteristics = await service.getCharacteristics();
+            characteristic = characteristics[0]; // Ambil karakter pertama yang boleh tulis
+            
+            document.getElementById('btStatus').innerText = "Bluetooth: ON";
+            document.getElementById('btStatus').className = "status connected";
+            document.getElementById('connectBtn').innerText = "BERSAMBUNG!";
+            document.getElementById('connectBtn').style.background = "#333";
+            
+            sendData("V:200\n");
+        } catch (error) {
+            console.log("Ralat: " + error);
+            alert("Gagal menyambung. Pastikan Bluetooth dihidupkan dan anda guna HTTPS.");
+        }
+    });
+
+    async function sendData(data) {
+        if (characteristic) {
+            try {
                 const encoder = new TextEncoder();
                 await characteristic.writeValue(encoder.encode(data));
+            } catch (e) {
+                console.log("Send Error");
             }
         }
+    }
 
-        // --- KAWALAN SLIDER ---
-        const slider = document.getElementById('speedSlider');
-        slider.oninput = function() {
-            const val = this.value;
-            document.getElementById('speedVal').innerText = val;
-            if (val !== lastV) {
-                sendData(`V:${val}\n`);
-                lastV = val;
-            }
-        };
-
-        // --- KAWALAN GAMEPAD (PS4) ---
-        window.addEventListener("gamepadconnected", (e) => {
-            document.getElementById('gpStatus').innerText = "PS4 Terhubung!";
-            document.getElementById('gpStatus').className = "connected";
-            updateGamepad();
-        });
-
-        window.addEventListener("gamepaddisconnected", () => {
-            document.getElementById('gpStatus').innerText = "Tiada PS4 Controller";
-            document.getElementById('gpStatus').className = "disconnected";
-        });
-
-        function updateGamepad() {
-            const gamepads = navigator.getGamepads();
-            if (!gamepads[0]) return;
-
-            const gp = gamepads[0];
-            
-            // PS4 Axis: [1] adalah LY (Kiri Up/Down), [2] adalah RX (Kanan Left/Right)
-            // Nilai dari Gamepad API adalah -1.0 hingga 1.0. Kita tukar ke -255 ke 255.
-            let rawLY = Math.round(gp.axes[1] * -255); // Terbalikkan axis Y supaya atas = positif
-            let rawRX = Math.round(gp.axes[2] * 255);
-
-            // Deadzone (abaikan gerakan kecil jika joystick longgar)
-            if (Math.abs(rawLY) < 20) rawLY = 0;
-            if (Math.abs(rawRX) < 20) rawRX = 0;
-
-            // Hanya hantar data jika nilai berubah untuk kurangkan lag
-            if (rawLY !== lastLY) {
-                sendData(`LY:${rawLY}\n`);
-                document.getElementById('lyVal').innerText = rawLY;
-                lastLY = rawLY;
-            }
-            if (rawRX !== lastRX) {
-                sendData(`RX:${rawRX}\n`);
-                document.getElementById('rxVal').innerText = rawRX;
-                lastRX = rawRX;
-            }
-
-            requestAnimationFrame(updateGamepad);
+    // Update Slider Speed
+    const slider = document.getElementById('speedSlider');
+    slider.oninput = function() {
+        document.getElementById('speedVal').innerText = this.value;
+        if (Math.abs(this.value - lastV) > 5) { // Hanya hantar jika beza > 5 untuk kurangkan trafik
+            sendData(`V:${this.value}\n`);
+            lastV = this.value;
         }
-    </script>
+    };
+
+    // Gamepad (PS4) Logic
+    window.addEventListener("gamepadconnected", () => {
+        document.getElementById('gpStatus').innerText = "PS4: ON";
+        document.getElementById('gpStatus').className = "status connected";
+        updateGamepad();
+    });
+
+    window.addEventListener("gamepaddisconnected", () => {
+        document.getElementById('gpStatus').innerText = "PS4: OFF";
+        document.getElementById('gpStatus').className = "status disconnected";
+    });
+
+    function updateGamepad() {
+        const gamepads = navigator.getGamepads();
+        if (!gamepads[0]) return;
+
+        const gp = gamepads[0];
+        
+        // Axis 1: Joystick Kiri (Y), Axis 2: Joystick Kanan (X)
+        let rawLY = Math.round(gp.axes[1] * -255); 
+        let rawRX = Math.round(gp.axes[2] * 255);
+
+        // Deadzone 20
+        if (Math.abs(rawLY) < 20) rawLY = 0;
+        if (Math.abs(rawRX) < 20) rawRX = 0;
+
+        // Hantar data jika berubah
+        if (rawLY !== lastLY) {
+            sendData(`LY:${rawLY}\n`);
+            document.getElementById('lyVal').innerText = rawLY;
+            lastLY = rawLY;
+        }
+        if (rawRX !== lastRX) {
+            sendData(`RX:${rawRX}\n`);
+            document.getElementById('rxVal').innerText = rawRX;
+            lastRX = rawRX;
+        }
+
+        requestAnimationFrame(updateGamepad);
+    }
+</script>
 </body>
 </html>
