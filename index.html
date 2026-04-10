@@ -36,9 +36,9 @@
         // --- Logik Bluetooth ---
         document.getElementById('connectBtn').onclick = async () => {
             try {
-                bluetoothDevice = await navigator.bluetooth.requestDevice({
-                    filters: [{ namePrefix: 'HC' }], // Tukar jika nama modul anda lain
-                    optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'] // Serial Port Service ID
+     bluetoothDevice = await navigator.bluetooth.requestDevice({
+    acceptAllDevices: true, // Ini akan tunjuk SEMUA peranti bluetooth yang ada
+    optionalServices: ['00001101-0000-1000-8000-00805f9b34fb'] 
                 });
                 const server = await bluetoothDevice.gatt.connect();
                 // Nota: Kebanyakan modul HC-05 guna UUID standard ini untuk komunikasi serial
