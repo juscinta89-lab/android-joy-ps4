@@ -1,168 +1,106 @@
 <!DOCTYPE html>
-<html lang="ms">
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PS4 Robot Controller</title>
-    <style>
-        :root { --primary: #00d4ff; --bg: #0f0f0f; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: white; text-align: center; padding: 20px; margin: 0; }
-        .container { max-width: 500px; margin: auto; background: #1a1a1a; padding: 20px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        
-        .status-box { display: flex; justify-content: space-around; margin: 20px 0; font-size: 14px; }
-        .status { padding: 8px 15px; border-radius: 20px; background: #333; transition: 0.3s; }
-        .connected { color: #00ff88; border: 1px solid #00ff88; }
-        .disconnected { color: #ff4444; border: 1px solid #ff4444; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-        button { 
-            background: linear-gradient(45deg, #007bff, #00d4ff);
-            color: white; border: none; padding: 15px 30px; 
-            font-size: 18px; font-weight: bold; border-radius: 50px; 
-            cursor: pointer; width: 100%; transition: 0.3s;
-        }
-        button:active { transform: scale(0.95); }
+<title>MicroJoy URC10</title>
 
-        .display-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
-        .card { background: #252525; padding: 15px; border-radius: 15px; }
-        .val { font-size: 28px; font-weight: bold; color: var(--primary); margin-top: 5px; }
+<style>
+body {
+  font-family: Arial;
+  text-align: center;
+  background: #0f172a;
+  color: white;
+}
 
-        .slider-section { margin-top: 20px; padding: 20px; background: #252525; border-radius: 15px; }
-        input[type=range] { width: 100%; height: 10px; border-radius: 5px; background: #444; outline: none; margin: 15px 0; }
-    </style>
+h1 {
+  margin-top: 20px;
+}
+
+button {
+  padding: 18px;
+  margin: 8px;
+  font-size: 20px;
+  border-radius: 12px;
+  border: none;
+  width: 80px;
+}
+
+#connect {
+  background: #22c55e;
+  width: 200px;
+}
+
+.control {
+  margin-top: 30px;
+}
+
+.stop {
+  background: red;
+  width: 100px;
+}
+</style>
 </head>
+
 <body>
 
-<div class="container">
-    <h2>🤖 Robot Controller</h2>
+<h1>🤖 MicroJoy URC10</h1>
 
-    <div class="status-box">
-        <div id="btStatus" class="status disconnected">Bluetooth: OFF</div>
-        <div id="gpStatus" class="status disconnected">PS4: OFF</div>
-    </div>
+<button id="connect">🔗 Connect</button>
 
-    <button id="connectBtn">SAMBUNG BLUETOOTH</button>
+<div class="control">
+  <div>
+    <button onclick="send('F')">⬆️</button>
+  </div>
 
-    <div class="display-grid">
-        <div class="card">
-            <div>J-Kiri (LY)</div>
-            <div id="lyVal" class="val">0</div>
-        </div>
-        <div class="card">
-            <div>J-Kanan (RX)</div>
-            <div id="rxVal" class="val">0</div>
-        </div>
-    </div>
+  <div>
+    <button onclick="send('L')">⬅️</button>
+    <button class="stop" onclick="send('S')">STOP</button>
+    <button onclick="send('R')">➡️</button>
+  </div>
 
-    <div class="slider-section">
-        <div>Max Speed: <span id="speedVal" style="color:var(--primary); font-weight:bold;">200</span></div>
-        <input type="range" id="speedSlider" min="0" max="255" value="200">
-    </div>
-
-    <p style="font-size: 12px; color: #666; margin-top: 20px;">Guna Chrome (Android/PC) & HTTPS</p>
+  <div>
+    <button onclick="send('B')">⬇️</button>
+  </div>
 </div>
 
 <script>
-    let device, characteristic;
-    let lastLY = 0, lastRX = 0, lastV = 200;
+let device;
+let characteristic;
 
-    // UUID Universal untuk Bluetooth Classic (SPP) dan BLE
-    const UUID_SPP = "00001101-0000-1000-8000-00805f9b34fb"; 
-    const UUID_BLE = 0xFFE0; 
-
-    document.getElementById('connectBtn').addEventListener('click', async () => {
-        try {
-            // Kita cuba cari semua peranti
-            device = await navigator.bluetooth.requestDevice({
-                acceptAllDevices: true,
-                optionalServices: [UUID_BLE, UUID_SPP]
-            });
-
-            const server = await device.gatt.connect();
-            
-            // Cuba dapatkan service (mencuba BLE dahulu kemudian SPP)
-            let service;
-            try {
-                service = await server.getPrimaryService(UUID_BLE);
-            } catch (e) {
-                service = await server.getPrimaryService(UUID_SPP);
-            }
-
-            const characteristics = await service.getCharacteristics();
-            characteristic = characteristics[0]; // Ambil karakter pertama yang boleh tulis
-            
-            document.getElementById('btStatus').innerText = "Bluetooth: ON";
-            document.getElementById('btStatus').className = "status connected";
-            document.getElementById('connectBtn').innerText = "BERSAMBUNG!";
-            document.getElementById('connectBtn').style.background = "#333";
-            
-            sendData("V:200\n");
-        } catch (error) {
-            console.log("Ralat: " + error);
-            alert("Gagal menyambung. Pastikan Bluetooth dihidupkan dan anda guna HTTPS.");
-        }
+// 🔥 CONNECT BLUETOOTH
+async function connectBluetooth() {
+  try {
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: ['00001101-0000-1000-8000-00805f9b34fb']
     });
 
-    async function sendData(data) {
-        if (characteristic) {
-            try {
-                const encoder = new TextEncoder();
-                await characteristic.writeValue(encoder.encode(data));
-            } catch (e) {
-                console.log("Send Error");
-            }
-        }
-    }
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService('00001101-0000-1000-8000-00805f9b34fb');
+    characteristic = await service.getCharacteristic('00001101-0000-1000-8000-00805f9b34fb');
 
-    // Update Slider Speed
-    const slider = document.getElementById('speedSlider');
-    slider.oninput = function() {
-        document.getElementById('speedVal').innerText = this.value;
-        if (Math.abs(this.value - lastV) > 5) { // Hanya hantar jika beza > 5 untuk kurangkan trafik
-            sendData(`V:${this.value}\n`);
-            lastV = this.value;
-        }
-    };
+    alert("✅ Connected to HC-05!");
+  } catch (error) {
+    alert("❌ Connection failed");
+    console.error(error);
+  }
+}
 
-    // Gamepad (PS4) Logic
-    window.addEventListener("gamepadconnected", () => {
-        document.getElementById('gpStatus').innerText = "PS4: ON";
-        document.getElementById('gpStatus').className = "status connected";
-        updateGamepad();
-    });
+document.getElementById("connect").addEventListener("click", connectBluetooth);
 
-    window.addEventListener("gamepaddisconnected", () => {
-        document.getElementById('gpStatus').innerText = "PS4: OFF";
-        document.getElementById('gpStatus').className = "status disconnected";
-    });
+// 🔥 SEND DATA
+async function send(cmd) {
+  if (!characteristic) {
+    alert("⚠️ Not connected!");
+    return;
+  }
 
-    function updateGamepad() {
-        const gamepads = navigator.getGamepads();
-        if (!gamepads[0]) return;
-
-        const gp = gamepads[0];
-        
-        // Axis 1: Joystick Kiri (Y), Axis 2: Joystick Kanan (X)
-        let rawLY = Math.round(gp.axes[1] * -255); 
-        let rawRX = Math.round(gp.axes[2] * 255);
-
-        // Deadzone 20
-        if (Math.abs(rawLY) < 20) rawLY = 0;
-        if (Math.abs(rawRX) < 20) rawRX = 0;
-
-        // Hantar data jika berubah
-        if (rawLY !== lastLY) {
-            sendData(`LY:${rawLY}\n`);
-            document.getElementById('lyVal').innerText = rawLY;
-            lastLY = rawLY;
-        }
-        if (rawRX !== lastRX) {
-            sendData(`RX:${rawRX}\n`);
-            document.getElementById('rxVal').innerText = rawRX;
-            lastRX = rawRX;
-        }
-
-        requestAnimationFrame(updateGamepad);
-    }
+  const encoder = new TextEncoder();
+  await characteristic.writeValue(encoder.encode(cmd));
+}
 </script>
+
 </body>
 </html>
